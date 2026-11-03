@@ -1,0 +1,18 @@
+{
+    "mcpServers": {
+        "almanac": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "chinese-almanac-mcp@latest"
+            ]
+        },
+        "syllabus-calendar": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "syllabus-calendar-mcp"
+            ]
+        }
+    }
+}

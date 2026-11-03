@@ -104,11 +104,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agent.Event:
 		switch msg.Type {
 		case "tool_call":
-			m.status = "正在调用 " + msg.Content // 更新状态栏
+			m.status = "正在调用 " + msg.Content
 			m = m.appendMessage(toolStyle.Render("  ⚙ [tool] ") + msg.Content)
 		case "tool_result":
 			m.status = "获取结果中..."
-			m = m.appendMessage(resultStyle.Render("  ✓ [result] ") + msg.Content)
+			// ✅ 修改这里：如果是长 JSON，折叠显示
+			content := strings.TrimSpace(msg.Content)
+			if len(content) > 200 || strings.HasPrefix(content, "{") {
+				m = m.appendMessage(resultStyle.Render("  ✓ [result] ") + "获取成功 (数据已隐式传给 AI)")
+			} else {
+				m = m.appendMessage(resultStyle.Render("  ✓ [result] ") + content)
+			}
 		case "thinking":
 			m.status = "思考中..."
 			m = m.appendMessage(mutedStyle.Render("  ✻ [think] ") + msg.Content)

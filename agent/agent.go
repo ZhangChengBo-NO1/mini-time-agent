@@ -17,23 +17,25 @@ import (
 
 const MaxLoop = 10
 
+// ✅ 更新了 prompt，加入了 almanac 和 syllabus-calendar 的说明
 var systemPrompt = fmt.Sprintf(`你是一个智能的时间与日程管理助手。回答简洁、中文输出。
 
 【当前系统真实时间】：%s。
 
-你可以使用外部工具来辅助完成任务。请根据用户的意图**自主决定**是否需要调用工具，以及调用哪个工具。你的决策依据是每个工具的描述（Description）。
+你可以使用外部工具来辅助完成任务。请根据用户的意图**自主决定**是否需要调用工具，以及调用哪个工具。
 
 请遵循以下原则：
-1. **直接回答**：对于非常简单的问题（如“今天几号”、“现在几点”），你可以直接使用上方提供的【系统真实时间】回答，无需调用工具。
-2. **记忆查询**：当用户询问与已记录事件相关的天数（如“还有多少天”、“过了多少天”），**绝对禁止向用户索要日期**，必须主动调用相关工具去查询长期记忆。只有工具明确返回“未找到”时，才告知用户无记录。
-3. **参数严格性**：在调用工具时，参数必须严格从用户【当前这一句】问题中提取，**绝对不要**盲目使用对话历史中提到的事件名称作为默认参数。
-4. **日期推算**：如果用户表述相对日期（如“今年11月1号”），必须严格基于上方系统真实时间的年份进行推算，转换为标准的 YYYY-MM-DD 格式后再调用工具记录。
-5. **确认机制**：在执行删除或修改操作时，如果工具返回匹配到多个结果，必须将候选结果原样列给用户，让用户明确指定要操作的对象，得到用户确认后再进行下一步工具调用。`,
+1. **直接回答**：简单的日期时间问题（如“今天几号”），直接使用【系统真实时间】回答。
+2. **数据获取与导出**：当用户要求整理、导出、查看行程时，**绝对禁止向用户索要数据**。你必须先阅读工具描述，找到能“查询所有事件”的工具去获取数据，然后再找能“生成日历文件”的工具去导出。
+3. **参数严格性**：参数必须严格从用户当前提问中提取，绝对不要盲目使用历史事件。
+4. **日期推算**：必须严格基于系统真实时间推算 YYYY-MM-DD。
+5. **确认机制**：删除/修改多个匹配结果时，必须列出让用户确认。
+6. **农历/黄历判断**：当用户询问农历日期、节气、法定节假日、调休或工作日时，请寻找描述中包含“农历”、“黄历”或“中国日历”等字眼的工具。
+7. **导出日历文件**：当需要生成 .ics 文件时，寻找描述中包含“生成”、“导出”或“ICS”字眼的工具。**极其重要**：调用此类工具时，必须传入 output_path 参数！如果用户没有指定具体路径，你必须自动将 output_path 设为 ics/日程.ics。绝对不要把大段的 ICS 代码直接输出给用户。`,
 	time.Now().Format("2006-01-02 15:04:05"))
 
-// Event 是 Agent 执行过程中通知给 UI 的事件。
 type Event struct {
-	Type    string // "thinking" / "tool_call" / "tool_result"
+	Type    string
 	Content string
 }
 
@@ -44,15 +46,12 @@ type Agent struct {
 	tools    map[string]*tools.ToolDef
 	toolDefs []openai.ChatCompletionToolUnionParam
 	session  *core.Session
-	program  *tea.Program // ✅ 新增：用于向 TUI 推送事件
+	program  *tea.Program
 }
 
 func NewAgent(llmClient *llm.Client) *Agent {
 	toolMap := tools.GetAllTools()
-	defs := make([]openai.ChatCompletionToolUnionParam, 0, len(toolMap))
-	for _, t := range toolMap {
-		defs = append(defs, t.ToParam())
-	}
+	defs := tools.BuildToolDefs(toolMap)
 
 	s := core.NewSession()
 	s.AddMessage(openai.SystemMessage(systemPrompt))
@@ -65,12 +64,17 @@ func NewAgent(llmClient *llm.Client) *Agent {
 	}
 }
 
-// ✅ 新增：注入 Bubble Tea 程序，用于推送事件
+// ✅ 新增：动态注册外部工具（MCP 工具）
+func (a *Agent) RegisterTools(extra []*tools.ToolDef) {
+	merged := tools.MergeExternal(a.tools, extra)
+	a.tools = merged
+	a.toolDefs = tools.BuildToolDefs(merged)
+}
+
 func (a *Agent) SetProgram(p *tea.Program) {
 	a.program = p
 }
 
-// emit 统一发送事件：优先推送到 TUI，同时回调 onEvent
 func (a *Agent) emit(e Event, onEvent OnEvent) {
 	if a.program != nil {
 		a.program.Send(e)
@@ -95,7 +99,6 @@ func (a *Agent) Run(ctx context.Context, userInput string, onEvent OnEvent) (str
 		msg := resp.Choices[0].Message
 		content := strings.TrimSpace(msg.Content)
 
-		// 拦截底层特殊 Token 泄漏
 		if strings.Contains(content, "<|tool_call_begin|>") || strings.Contains(content, "</tool_call>") {
 			return "（系统拦截：大模型输出了底层乱码，请重新输入）", nil
 		}
@@ -131,7 +134,6 @@ func (a *Agent) Run(ctx context.Context, userInput string, onEvent OnEvent) (str
 		}
 
 		for _, call := range msg.ToolCalls {
-			// ✅ 推送工具调用事件
 			a.emit(Event{
 				Type:    "tool_call",
 				Content: fmt.Sprintf("%s(%s)", call.Function.Name, call.Function.Arguments),
@@ -149,7 +151,6 @@ func (a *Agent) Run(ctx context.Context, userInput string, onEvent OnEvent) (str
 				result = fmt.Sprintf("未找到工具: %s", call.Function.Name)
 			}
 
-			// ✅ 推送工具结果事件
 			a.emit(Event{Type: "tool_result", Content: result}, onEvent)
 
 			a.session.AddMessage(openai.ToolMessage(result, call.ID))

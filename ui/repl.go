@@ -34,6 +34,7 @@ func RunREPL(a *agent.Agent) {
 			return
 		}
 
+		// ui/repl.go
 		answer, err := a.Run(
 			context.Background(),
 			input,
@@ -44,7 +45,13 @@ func RunREPL(a *agent.Agent) {
 				case "tool_call":
 					fmt.Printf("  [tool ] %s\n", e.Content)
 				case "tool_result":
-					fmt.Printf("  [result] %s\n", e.Content)
+					// ✅ 修改这里：拦截过长的 JSON 或对象结构
+					content := strings.TrimSpace(e.Content)
+					if len(content) > 200 || strings.HasPrefix(content, "{") {
+						fmt.Printf("  [result] 获取成功 (数据较长，已隐式传给 AI 处理)\n")
+					} else {
+						fmt.Printf("  [result] %s\n", content)
+					}
 				}
 			},
 		)
