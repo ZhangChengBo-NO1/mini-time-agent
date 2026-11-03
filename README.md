@@ -77,19 +77,23 @@
 ```bash
 git clone https://github.com/你的用户名/mini-time-agent.git
 cd mini-time-agent
-3. 配置环境变量
+```
+
+### 3. 配置环境变量
 在终端中设置你的 API Key：
 
-bash
+```bash
 # macOS / Linux
 export SILICONFLOW_API_KEY="sk-你的密钥"
 
 # Windows (PowerShell)
 $env:SILICONFLOW_API_KEY="sk-你的密钥"
-4. 配置 MCP 插件
-在项目根目录创建 mcp.json 文件，填入你想启用的扩展服务（项目推荐配置如下）：
+```
 
-json
+### 4. 配置 MCP 插件
+在项目根目录创建 `mcp.json` 文件，填入你想启用的扩展服务（项目推荐配置如下）：
+
+```json
 {
   "mcpServers": {
     "almanac": {
@@ -102,8 +106,10 @@ json
     }
   }
 }
-5. 编译与运行
-bash
+```
+
+### 5. 编译与运行
+```bash
 # 下载依赖
 go mod tidy
 
@@ -112,29 +118,29 @@ go run . tui
 
 # 以极简 REPL 模式启动
 go run .
-💡 对话示例
-日常查询：
+```
 
-“今天几号？是工作日吗？”
+---
 
-“距离我生日还有多少天？”
+## 💡 对话示例
 
-日程管理：
+- **日常查询**：
+  - *“今天几号？是工作日吗？”*
+  - *“距离我生日还有多少天？”*
+- **日程管理**：
+  - *“帮我记录一下，11月15号我要去北京出差。”*
+  - *“把交房租的日程改到每个月的5号。”*
+- **🤖 MCP 特色能力**：
+  - *“查一下这周六的农历和节气，适合搬家吗？”*（Agent 自动调用黄历 MCP）
+  - *“帮我把这周的行程生成日历文件，保存到当前目录下的 week.ics。”*（Agent 先查本地数据，再调用日历 MCP 生成文件，直接发到手机上即可导入）
 
-“帮我记录一下，11月15号我要去北京出差。”
+---
 
-“把交房租的日程改到每个月的5号。”
+## 🏗️ 架构设计
 
-🤖 MCP 特色能力：
+本项目采用了 **Agent 循环 + MCP 动态工具桥接** 的设计模式。大模型只需要阅读工具说明书，无需修改核心代码即可获得新能力。
 
-“查一下这周六的农历和节气，适合搬家吗？”（Agent 自动调用黄历 MCP）
-
-“帮我把这周的行程生成日历文件，保存到当前目录下的 week.ics。”（Agent 先查本地数据，再调用日历 MCP 生成文件，直接发到手机上即可导入）
-
-🏗️ 架构设计
-本项目采用了 Agent 循环 + MCP 动态工具桥接 的设计模式。大模型只需要阅读工具说明书，无需修改核心代码即可获得新能力。
-
-text
+```text
 mini-time-agent/
 ├── main.go               # 程序入口，初始化 Agent 和 MCP 管理器
 ├── mcp.json              # 外部 MCP 插件配置文件
@@ -149,9 +155,16 @@ mini-time-agent/
 │   ├── manager.go        # 负责拉起 Node.js 子进程，建立 stdio 通信管道
 │   └── tool_wrapper.go   # 协议适配器，将 MCP 工具伪装成 Go 原生 ToolDef
 └── ui/                   # REPL 与 TUI 界面
-🔌 MCP 模块工作原理
-发现 (Discovery)：启动时，manager.go 读取 mcp.json，通过 os/exec 拉起子进程，利用 stdio 管道获取外部工具列表。
+```
 
-适配 (Adaption)：tool_wrapper.go 将外部 MCP 的 JSON Schema 转换为 Go 的 FunctionParameters，并在 Description 中加入如 【黄历查询】 的中文前缀，大幅提升大模型的理解命中率。
+### 🔌 MCP 模块工作原理
 
-执行 (Execution)：大模型决策后，适配器将参数通过管道转发给子进程。外部进程算完后回传结果，整个过程对 Agent 主循环完全透明，实现了真正的“插件化”。
+1. **发现 (Discovery)**：启动时，`manager.go` 读取 `mcp.json`，通过 `os/exec` 拉起子进程，利用 stdio 管道获取外部工具列表。
+2. **适配 (Adaption)**：`tool_wrapper.go` 将外部 MCP 的 JSON Schema 转换为 Go 的 `FunctionParameters`，并在 Description 中加入如 `【黄历查询】` 的中文前缀，大幅提升大模型的理解命中率。
+3. **执行 (Execution)**：大模型决策后，适配器将参数通过管道转发给子进程。外部进程算完后回传结果，整个过程对 Agent 主循环完全透明，实现了真正的“插件化”。
+
+---
+
+## 📄 开源协议
+
+本项目基于 [MIT License](https://opensource.org/licenses/MIT) 协议开源。欢迎提交 Issue 和 Pull Request！
